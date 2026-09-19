@@ -2,65 +2,67 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from './supabaseClient';
 import {
   Clock,
-  LogIn,
   LogOut,
-  CalendarCheck,
-  CheckCircle2,
-  AlertTriangle,
   PlusCircle,
-  X,
-  Lock,
-  User,
   MessageSquare,
   Send,
   Image as ImageIcon,
-  HandCoins
+  HandCoins,
+  ShieldCheck,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('emp_portal_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleLoginSuccess = (user) => {
+    localStorage.setItem('emp_portal_user', JSON.stringify(user));
+    setCurrentUser(user);
+  };
+
+  const handleSignOut = () => {
+    localStorage.removeItem('emp_portal_user');
+    setCurrentUser(null);
+  };
 
   if (!currentUser) {
-    return <AuthScreen onLoginSuccess={setCurrentUser} />;
+    return <CodeAuthScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
-  return <EmployeeDashboard user={currentUser} onSignOut={() => setCurrentUser(null)} />;
+  return <EmployeeDashboard user={currentUser} onSignOut={handleSignOut} />;
 }
 
-function AuthScreen({ onLoginSuccess }) {
-  const [isRegistering, setIsRegistering] = useState(false);
-  const [usernameInput, setUsernameInput] = useState('');
-  const [passwordInput, setPasswordInput] = useState('');
-  const [empCode, setEmpCode] = useState('');
-  const [empEmail, setEmpEmail] = useState('');
-  const [newUsername, setNewUsername] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+function CodeAuthScreen({ onLoginSuccess }) {
+  const [accessCode, setAccessCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   const handleLogin = async (e) => {
     e.preventDefault();
+    if (!accessCode.trim()) return;
+
     setError('');
     setLoading(true);
 
     try {
-      const cleanUsername = usernameInput.trim().toLowerCase();
+      const cleanCode = accessCode.trim().toUpperCase();
       const { data: emp, error: dbErr } = await supabase
           .from('employees')
           .select('*')
-          .ilike('username', cleanUsername)
+          .ilike('emp_code', cleanCode)
           .maybeSingle();
 
       if (dbErr) throw dbErr;
-      if (!emp || !emp.is_activated) {
-        setError('No activated account found with this username. Please activate first.');
-        setLoading(false);
-        return;
-      }
-      if (emp.password_hash !== passwordInput) {
-        setError('Incorrect password.');
+      if (!emp) {
+        setError(`No employee found with code "${cleanCode}". Please verify with HR.`);
         setLoading(false);
         return;
       }
@@ -73,87 +75,41 @@ function AuthScreen({ onLoginSuccess }) {
     }
   };
 
-  const handleFirstTimeSetup = async (e) => {
-    e.preventDefault();
-    setError('');
-    setSuccess('');
-
-    if (newPassword !== confirmPassword) return setError('Passwords do not match.');
-    if (newPassword.length < 4) return setError('Password must be at least 4 characters long.');
-
-    setLoading(true);
-    try {
-      const cleanCode = empCode.trim();
-      const cleanEmail = empEmail.trim().toLowerCase();
-      const cleanUsername = newUsername.trim().toLowerCase();
-
-      const { data: emp, error: findErr } = await supabase
-          .from('employees')
-          .select('*')
-          .ilike('emp_code', cleanCode)
-          .ilike('email', cleanEmail)
-          .maybeSingle();
-
-      if (findErr) throw findErr;
-      if (!emp) {
-        setError(`No employee record found matching code "${cleanCode}" and email "${cleanEmail}". Make sure HR added you first.`);
-        setLoading(false);
-        return;
-      }
-
-      if (emp.is_activated) {
-        setError('This employee account is already activated. Sign in directly.');
-        setLoading(false);
-        return;
-      }
-
-      const { data: updated, error: updErr } = await supabase
-          .from('employees')
-          .update({
-            username: cleanUsername,
-            password_hash: newPassword,
-            is_activated: true
-          })
-          .eq('id', emp.id)
-          .select()
-          .single();
-
-      if (updErr) throw updErr;
-
-      setSuccess('Account activated! Logging you in...');
-      setTimeout(() => onLoginSuccess(updated), 1000);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-8 space-y-6 shadow-2xl">
-          <h2 className="text-xl font-bold text-center">Employee Self-Service Workspace</h2>
-          {error && <div className="p-3 bg-rose-950 text-rose-300 text-xs rounded-xl">{error}</div>}
-          {success && <div className="p-3 bg-emerald-950 text-emerald-300 text-xs rounded-xl">{success}</div>}
+        <div className="w-full max-w-sm bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 space-y-6 shadow-2xl">
+          <div className="text-center space-y-2">
+            <div className="h-12 w-12 rounded-2xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center mx-auto shadow-inner">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <h2 className="text-xl font-bold">Staff Access Portal</h2>
+            <p className="text-xs text-slate-400">Enter your assigned code to enter your workspace</p>
+          </div>
 
-          {!isRegistering ? (
-              <form onSubmit={handleLogin} className="space-y-4 text-xs">
-                <input required placeholder="Username" value={usernameInput} onChange={(e) => setUsernameInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <input required type="password" placeholder="Password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <button type="submit" disabled={loading} className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl text-white cursor-pointer">{loading ? 'Verifying...' : 'Sign In'}</button>
-                <p className="text-center text-[11px] text-slate-400">First time? <button type="button" onClick={() => setIsRegistering(true)} className="text-emerald-400 font-bold cursor-pointer">Activate Account</button></p>
-              </form>
-          ) : (
-              <form onSubmit={handleFirstTimeSetup} className="space-y-3 text-xs">
-                <input required placeholder="Employee Code (e.g. EMP-101)" value={empCode} onChange={(e) => setEmpCode(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <input required type="email" placeholder="Work Email" value={empEmail} onChange={(e) => setEmpEmail(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <input required placeholder="Choose a Username" value={newUsername} onChange={(e) => setNewUsername(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <input required type="password" placeholder="Set Password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <input required type="password" placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white" />
-                <button type="submit" disabled={loading} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl text-white cursor-pointer">Create Account</button>
-                <p className="text-center text-[11px]"><button type="button" onClick={() => setIsRegistering(false)} className="text-slate-400 cursor-pointer">Back to Login</button></p>
-              </form>
-          )}
+          {error && <div className="p-3 bg-rose-950/80 border border-rose-800 text-rose-300 text-xs rounded-xl text-center font-medium">{error}</div>}
+
+          <form onSubmit={handleLogin} className="space-y-4 text-xs">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-400 uppercase mb-1.5 tracking-wider">Access Code</label>
+              <input
+                  required
+                  autoFocus
+                  type="text"
+                  placeholder="e.g. EMP-101"
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-center text-lg font-mono font-bold text-emerald-400 uppercase tracking-widest outline-none focus:border-indigo-500 transition"
+              />
+            </div>
+
+            <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 font-bold rounded-xl text-white shadow-lg text-xs tracking-wider uppercase transition cursor-pointer"
+            >
+              {loading ? 'Validating Code...' : 'Open Portal'}
+            </button>
+          </form>
         </div>
       </div>
   );
@@ -169,9 +125,11 @@ function EmployeeDashboard({ user, onSignOut }) {
   // Chat
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
-  const [chatPhotoUrl, setChatPhotoUrl] = useState('');
-  const [showPhotoPrompt, setShowPhotoPrompt] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editInput, setEditInput] = useState('');
+  const [uploadingFile, setUploadingFile] = useState(false);
   const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Modals
   const [showLeaveModal, setShowLeaveModal] = useState(false);
@@ -201,8 +159,12 @@ function EmployeeDashboard({ user, onSignOut }) {
 
     const channel = supabase
         .channel(`emp-realtime-${emp.id}`)
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages', filter: `employee_id=eq.${emp.id}` }, (payload) => {
-          setChatMessages((prev) => [...prev, payload.new]);
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter: `employee_id=eq.${emp.id}` }, (payload) => {
+          if (payload.eventType === 'INSERT') {
+            setChatMessages((prev) => [...prev, payload.new]);
+          } else if (payload.eventType === 'UPDATE') {
+            setChatMessages((prev) => prev.map((m) => (m.id === payload.new.id ? payload.new : m)));
+          }
         })
         .on('postgres_changes', { event: '*', schema: 'public', table: 'general_requests', filter: `employee_id=eq.${emp.id}` }, () => {
           loadData();
@@ -226,23 +188,99 @@ function EmployeeDashboard({ user, onSignOut }) {
 
   const sendChatMessage = async (e) => {
     e.preventDefault();
-    if (!chatInput.trim() && !chatPhotoUrl.trim()) return;
+    if (!chatInput.trim()) return;
 
     const payload = {
       employee_id: emp.id,
       sender: 'EMPLOYEE',
       sender_name: emp.name,
-      text: chatInput.trim() || null,
-      photo_url: chatPhotoUrl.trim() || null
+      text: chatInput.trim(),
+      photo_url: null,
+      is_deleted: false,
+      is_edited: false
     };
 
-    const { data, error } = await supabase.from('chat_messages').insert([payload]).select().single();
-    if (!error && data) {
-      setChatMessages((prev) => [...prev, data]);
-      setChatInput('');
-      setChatPhotoUrl('');
-      setShowPhotoPrompt(false);
+    const textToSend = chatInput;
+    setChatInput('');
+
+    const { error } = await supabase.from('chat_messages').insert([payload]);
+    if (error) {
+      setChatInput(textToSend);
+      console.error(error.message);
     }
+  };
+
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingFile(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${emp.id}/${Date.now()}.${fileExt}`;
+
+      const { error: uploadError } = await supabase.storage
+          .from('chat-attachments')
+          .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicUrlData } = supabase.storage
+          .from('chat-attachments')
+          .getPublicUrl(fileName);
+
+      const payload = {
+        employee_id: emp.id,
+        sender: 'EMPLOYEE',
+        sender_name: emp.name,
+        text: null,
+        photo_url: publicUrlData.publicUrl,
+        is_deleted: false,
+        is_edited: false
+      };
+
+      const { error: insertError } = await supabase.from('chat_messages').insert([payload]);
+      if (insertError) throw insertError;
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setUploadingFile(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const handleStartEdit = (msg) => {
+    setEditingMessageId(msg.id);
+    setEditInput(msg.text || '');
+  };
+
+  const handleSaveEdit = async (id) => {
+    if (!editInput.trim()) return;
+    const { error } = await supabase
+        .from('chat_messages')
+        .update({ text: editInput.trim(), is_edited: true })
+        .eq('id', id);
+
+    if (error) {
+      alert(error.message);
+    } else {
+      setEditingMessageId(null);
+      setEditInput('');
+    }
+  };
+
+  const handleDeleteMessage = async (id) => {
+    if (!confirm('Are you sure you want to delete this message?')) return;
+    const { error } = await supabase
+        .from('chat_messages')
+        .update({
+          text: 'This message was deleted',
+          photo_url: null,
+          is_deleted: true
+        })
+        .eq('id', id);
+
+    if (error) alert(error.message);
   };
 
   const handlePunch = async (mode) => {
@@ -286,34 +324,47 @@ function EmployeeDashboard({ user, onSignOut }) {
     }
   };
 
+  const formatMessageDate = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    return date.toLocaleDateString(undefined, {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric'
+    }) + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
-        <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between">
+        <header className="bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <Clock className="w-5 h-5 text-emerald-400" />
             <div>
               <h1 className="text-sm font-bold text-white">{emp.name}</h1>
-              <p className="text-[10px] text-slate-400 font-mono">@{emp.username} • Base: ${Number(emp.salary).toLocaleString()}</p>
+              <p className="text-[10px] text-slate-400 font-mono"><strong className="text-indigo-400">{emp.emp_code}</strong> • Base: ${Number(emp.salary).toLocaleString()}</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => setActiveTab('attendance')} className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${activeTab === 'attendance' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>Punch & Quotas</button>
-            <button onClick={() => setActiveTab('requests')} className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${activeTab === 'requests' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>Raises & Advances</button>
-            <button onClick={() => setActiveTab('chat')} className={`px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${activeTab === 'chat' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>Direct Messages</button>
-            <button onClick={onSignOut} className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-xl ml-2 cursor-pointer">Sign Out</button>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button onClick={() => setActiveTab('attendance')} className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold ${activeTab === 'attendance' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>Punch & Leaves</button>
+            <button onClick={() => setActiveTab('requests')} className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold ${activeTab === 'requests' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>Advances</button>
+            <button onClick={() => setActiveTab('chat')} className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold ${activeTab === 'chat' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}>Chat</button>
+            <button onClick={onSignOut} className="p-1.5 sm:px-3 sm:py-1.5 bg-slate-800 hover:bg-slate-700 text-xs rounded-xl text-slate-300 ml-1">
+              <span className="hidden sm:inline">Sign Out</span>
+              <LogOut className="w-4 h-4 sm:hidden" />
+            </button>
           </div>
         </header>
 
-        <main className="flex-1 max-w-4xl w-full mx-auto p-6 space-y-6">
+        <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 space-y-6">
           {/* TAB 1: PUNCH & VACATIONS */}
           {activeTab === 'attendance' && (
               <div className="space-y-5">
-                <div className="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-center space-y-4 shadow-xl">
-                  <span className="text-xs font-bold text-slate-400 uppercase">Today's Virtual Attendance</span>
-                  <div className="grid grid-cols-2 gap-4">
-                    <button onClick={() => handlePunch('IN')} disabled={loading} className="py-4 bg-emerald-600 hover:bg-emerald-500 font-black rounded-2xl text-sm cursor-pointer">Clock IN (Arrival)</button>
-                    <button onClick={() => handlePunch('OUT')} disabled={loading} className="py-4 bg-rose-600 hover:bg-rose-500 font-black rounded-2xl text-sm cursor-pointer">Clock OUT (Departure)</button>
+                <div className="bg-slate-900 border border-slate-800 p-5 sm:p-6 rounded-3xl text-center space-y-4 shadow-xl">
+                  <span className="text-xs font-bold text-slate-400 uppercase">Today's Virtual Punch Terminal</span>
+                  <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                    <button onClick={() => handlePunch('IN')} disabled={loading} className="py-3.5 sm:py-4 bg-emerald-600 hover:bg-emerald-500 font-black rounded-2xl text-xs sm:text-sm">Clock IN</button>
+                    <button onClick={() => handlePunch('OUT')} disabled={loading} className="py-3.5 sm:py-4 bg-rose-600 hover:bg-rose-500 font-black rounded-2xl text-xs sm:text-sm">Clock OUT</button>
                   </div>
                   <div className="grid grid-cols-3 gap-2 bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs">
                     <div><span className="text-slate-500 block text-[10px]">Arrival:</span><span className="font-mono text-emerald-400 font-bold">{todayLog?.clock_in ? new Date(todayLog.clock_in).toLocaleTimeString() : '--'}</span></div>
@@ -323,9 +374,9 @@ function EmployeeDashboard({ user, onSignOut }) {
                 </div>
 
                 <div className="flex justify-between items-center">
-                  <h3 className="font-bold text-sm text-white">Vacation Quotas & Leave History</h3>
-                  <button onClick={() => setShowLeaveModal(true)} className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                    <PlusCircle className="w-4 h-4" /> Request Vacation / Sick
+                  <h3 className="font-bold text-sm text-white">Leave History & Quotas</h3>
+                  <button onClick={() => setShowLeaveModal(true)} className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
+                    <PlusCircle className="w-4 h-4" /> Request Leave
                   </button>
                 </div>
 
@@ -354,19 +405,19 @@ function EmployeeDashboard({ user, onSignOut }) {
           {/* TAB 2: FINANCIAL REQUESTS */}
           {activeTab === 'requests' && (
               <div className="space-y-5">
-                <div className="flex justify-between items-center bg-slate-900 p-5 rounded-2xl border border-slate-800">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-slate-900 p-5 rounded-2xl border border-slate-800">
                   <div>
                     <h3 className="font-bold text-sm text-white">Financial Inquiries & Advances</h3>
-                    <p className="text-xs text-slate-400">Request company debt/advances or submit a salary increase application.</p>
+                    <p className="text-xs text-slate-400">Request advance loans or apply for a salary increase.</p>
                   </div>
-                  <button onClick={() => setShowGeneralModal(true)} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer">
-                    <HandCoins className="w-4 h-4" /> New Financial Request
+                  <button onClick={() => setShowGeneralModal(true)} className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5">
+                    <HandCoins className="w-4 h-4" /> New Inquiry
                   </button>
                 </div>
 
                 <div className="space-y-2">
                   {myGeneralRequests.length === 0 ? (
-                      <p className="text-center py-6 text-slate-500 text-xs">No advance or salary requests submitted.</p>
+                      <p className="text-center py-6 text-slate-500 text-xs">No requests submitted.</p>
                   ) : (
                       myGeneralRequests.map((r) => (
                           <div key={r.id} className="p-4 bg-slate-900 border border-slate-800 rounded-2xl flex justify-between items-center text-xs">
@@ -386,27 +437,78 @@ function EmployeeDashboard({ user, onSignOut }) {
               </div>
           )}
 
-          {/* TAB 3: DIRECT CHAT WITH HR */}
+          {/* TAB 3: DIRECT CHAT (DATE, EDIT, DELETE & PHOTO UPLOADS) */}
           {activeTab === 'chat' && (
               <div className="h-[75vh] bg-slate-900 border border-slate-800 rounded-3xl flex flex-col justify-between overflow-hidden shadow-2xl">
-                <div className="p-4 border-b border-slate-800 bg-slate-950 font-bold text-sm text-white flex items-center gap-2">
+                <div className="p-3.5 sm:p-4 border-b border-slate-800 bg-slate-950 font-bold text-sm text-white flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-emerald-400" />
                   <span>Direct Messages with HR Operations</span>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-5 space-y-3">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
                   {chatMessages.length === 0 ? (
                       <p className="text-center text-xs text-slate-500 py-10">Send your first message or picture to HR below.</p>
                   ) : (
                       chatMessages.map((m) => {
                         const isMe = m.sender === 'EMPLOYEE';
+                        const isEditing = editingMessageId === m.id;
+
                         return (
-                            <div key={m.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                              <div className={`max-w-md p-3.5 rounded-2xl text-xs space-y-1.5 shadow-md ${isMe ? 'bg-emerald-600 text-white rounded-tr-none' : 'bg-slate-800 text-slate-200 rounded-tl-none'}`}>
-                                {m.text && <p>{m.text}</p>}
-                                {m.photo_url && <img src={m.photo_url} alt="Attachment" className="rounded-xl max-h-48 object-cover mt-1 border border-white/20" />}
+                            <div key={m.id} className={`flex flex-col group ${isMe ? 'items-end' : 'items-start'}`}>
+                              <div className={`relative max-w-xs sm:max-w-md p-3.5 rounded-2xl text-xs space-y-1.5 shadow-md ${
+                                  m.is_deleted
+                                      ? 'bg-slate-800/50 text-slate-500 italic border border-slate-800'
+                                      : isMe
+                                          ? 'bg-emerald-600 text-white rounded-tr-none'
+                                          : 'bg-slate-800 text-slate-200 rounded-tl-none'
+                              }`}>
+                                {isEditing ? (
+                                    <div className="space-y-2">
+                                      <input
+                                          type="text"
+                                          value={editInput}
+                                          onChange={(e) => setEditInput(e.target.value)}
+                                          className="w-full bg-slate-900 text-white p-2 rounded-lg border border-slate-700 outline-none text-xs"
+                                      />
+                                      <div className="flex justify-end gap-2 text-[10px]">
+                                        <button onClick={() => setEditingMessageId(null)} className="px-2 py-1 bg-slate-700 rounded">Cancel</button>
+                                        <button onClick={() => handleSaveEdit(m.id)} className="px-2 py-1 bg-emerald-800 font-bold rounded">Save</button>
+                                      </div>
+                                    </div>
+                                ) : (
+                                    <>
+                                      <p className="leading-relaxed whitespace-pre-wrap">{m.text}</p>
+                                      {m.photo_url && (
+                                          <a href={m.photo_url} target="_blank" rel="noreferrer" className="block mt-1">
+                                            <img
+                                                src={m.photo_url}
+                                                alt="Attachment"
+                                                className="rounded-xl max-h-52 w-auto object-cover border border-white/20 hover:opacity-95 transition"
+                                            />
+                                          </a>
+                                      )}
+                                    </>
+                                )}
+
+                                {/* Edit & Delete Controls for Employee */}
+                                {isMe && !m.is_deleted && !isEditing && (
+                                    <div className="absolute top-1 -left-14 hidden group-hover:flex items-center gap-1 bg-slate-900/90 border border-slate-800 rounded-lg p-1 shadow-lg">
+                                      {m.text && (
+                                          <button onClick={() => handleStartEdit(m)} title="Edit Message" className="p-1 hover:text-emerald-400 text-slate-400">
+                                            <Pencil className="w-3 h-3" />
+                                          </button>
+                                      )}
+                                      <button onClick={() => handleDeleteMessage(m.id)} title="Delete Message" className="p-1 hover:text-rose-400 text-slate-400">
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                )}
                               </div>
-                              <span className="text-[9px] text-slate-500 mt-0.5">{new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+
+                              <div className="flex items-center gap-1.5 text-[9px] text-slate-500 mt-1 px-1">
+                                <span>{formatMessageDate(m.created_at)}</span>
+                                {m.is_edited && !m.is_deleted && <span className="italic text-emerald-400 font-medium">(edited)</span>}
+                              </div>
                             </div>
                         );
                       })
@@ -414,34 +516,34 @@ function EmployeeDashboard({ user, onSignOut }) {
                   <div ref={messagesEndRef} />
                 </div>
 
-                <form onSubmit={sendChatMessage} className="p-4 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
-                  <button type="button" onClick={() => setShowPhotoPrompt(!showPhotoPrompt)} className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 cursor-pointer">
-                    <ImageIcon className="w-4 h-4" />
+                <form onSubmit={sendChatMessage} className="p-3 sm:p-4 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
+                  <input
+                      type="file"
+                      accept="image/*"
+                      ref={fileInputRef}
+                      onChange={handleFileUpload}
+                      className="hidden"
+                  />
+                  <button
+                      type="button"
+                      disabled={uploadingFile}
+                      onClick={() => fileInputRef.current?.click()}
+                      title="Upload Photo / Document"
+                      className="p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-300 disabled:opacity-50 transition"
+                  >
+                    <ImageIcon className={`w-4 h-4 ${uploadingFile ? 'animate-pulse text-emerald-400' : ''}`} />
                   </button>
                   <input
                       type="text"
-                      placeholder="Type a message to HR..."
+                      placeholder={uploadingFile ? 'Uploading attachment...' : 'Type a message to HR...'}
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
-                      className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      className="flex-1 bg-slate-900 border border-slate-800 rounded-xl px-4 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
                   />
-                  <button type="submit" className="p-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-bold cursor-pointer">
+                  <button type="submit" className="p-2.5 bg-emerald-600 hover:bg-emerald-500 rounded-xl text-white font-bold transition">
                     <Send className="w-4 h-4" />
                   </button>
                 </form>
-
-                {showPhotoPrompt && (
-                    <div className="p-3 bg-slate-950 border-t border-slate-800 flex items-center gap-2">
-                      <input
-                          type="text"
-                          placeholder="Paste image URL (e.g. receipt or doctor note)..."
-                          value={chatPhotoUrl}
-                          onChange={(e) => setChatPhotoUrl(e.target.value)}
-                          className="flex-1 bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white"
-                      />
-                      <button type="button" onClick={() => setShowPhotoPrompt(false)} className="text-xs text-slate-400 cursor-pointer">Done</button>
-                    </div>
-                )}
               </div>
           )}
         </main>
@@ -483,8 +585,8 @@ function EmployeeDashboard({ user, onSignOut }) {
                     <textarea required name="details" rows="3" placeholder="Explain the reason for this inquiry..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white" />
                   </div>
                   <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setShowGeneralModal(false)} className="px-4 py-2 text-slate-400 cursor-pointer">Cancel</button>
-                    <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl text-white cursor-pointer">Submit to HR</button>
+                    <button type="button" onClick={() => setShowGeneralModal(false)} className="px-4 py-2 text-slate-400">Cancel</button>
+                    <button type="submit" className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 font-bold rounded-xl text-white">Submit to HR</button>
                   </div>
                 </form>
               </div>
@@ -526,8 +628,8 @@ function EmployeeDashboard({ user, onSignOut }) {
                   <input required type="number" min="1" name="days" placeholder="Days count" className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white" />
                   <textarea required name="reason" rows="2" placeholder="Reason..." className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-white" />
                   <div className="flex justify-end gap-2 pt-2">
-                    <button type="button" onClick={() => setShowLeaveModal(false)} className="px-4 py-2 text-slate-400 cursor-pointer">Cancel</button>
-                    <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl text-white cursor-pointer">Submit Request</button>
+                    <button type="button" onClick={() => setShowLeaveModal(false)} className="px-4 py-2 text-slate-400">Cancel</button>
+                    <button type="submit" className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 font-bold rounded-xl text-white">Submit Request</button>
                   </div>
                 </form>
               </div>
